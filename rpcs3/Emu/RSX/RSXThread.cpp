@@ -2532,7 +2532,10 @@ namespace rsx
 				break;
 			}
 		}
-
+		else if (g_cfg.video.mgs4_staff)
+		{
+			value = g_cfg.video.zcull_default_value;
+		}
 		rsx::reservation_lock<true> lock(sink, 16);
 		vm::_ref<atomic_t<CellGcmReportData>>(sink).store({ timestamp(), value, 0});
 	}
