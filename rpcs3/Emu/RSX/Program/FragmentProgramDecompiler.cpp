@@ -605,7 +605,15 @@ template<typename T> std::string FragmentProgramDecompiler::GetSRC(T src)
 			// TEX0 - TEX9
 			// Texcoord 2d mask seems to reset the last 2 arguments to 0 and w if set
 			const u8 texcoord = u8(register_id) - 4;
-			if (m_prog.texcoord_is_point_coord(texcoord))
+			const u8 texcoord_mgs = u8(dst.src_attr_reg_num) - 4;
+			if (texcoord_mgs == 9 && dst.opcode == RSX_FP_OPCODE_MOV && g_cfg.video.mgs4_staff)
+			{
+				//MGS4 uses only xy of this, x is strength and y is texcoord scale factor or depth bias, clear only x to fix black shadows, clearing y introduces moire 代码移植自0.08
+				ret += getFloatTypeName(4) + "(0., " + reg_var + ".y, " + reg_var + ".z, " + reg_var + ".w)/*MGS4_SHADOW_FIX*/";
+			}
+
+
+			else if (m_prog.texcoord_is_point_coord(texcoord))
 			{
 				// Point sprite coord generation. Stacks with the 2D override mask.
 				if (m_prog.texcoord_is_2d(texcoord))

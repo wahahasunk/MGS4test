@@ -8162,17 +8162,24 @@ public:
 					return eval(a * b);
 				}
 
-				if (g_cfg.video.mgs4_staff)
-				{
-					const auto ca = clamp_smax(a);
-					const auto cb = clamp_smax(b);
-					return eval(ca * cb);
-				}
+				//if (g_cfg.video.mgs4_staff)
+				//{
+				//	const auto ca = clamp_smax(a);
+				//	const auto cb = clamp_smax(b);
+				//	return eval(ca * cb);
+				//}
 
 				const auto ma = sext<s32[4]>(fcmp_uno(a != fsplat<f32[4]>(0.)));
 				const auto mb = sext<s32[4]>(fcmp_uno(b != fsplat<f32[4]>(0.)));
 				return eval(bitcast<f32[4]>(bitcast<s32[4]>(a * b) & ma & mb));
 			}
+			if (g_cfg.video.mgs4_staff)
+			{
+				const auto ca = clamp_smax(a);
+				const auto cb = clamp_smax(b);
+				return eval(ca * cb);
+			}
+
 			else
 			{
 				return eval(a * b);
