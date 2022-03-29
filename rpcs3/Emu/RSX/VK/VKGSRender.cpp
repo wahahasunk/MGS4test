@@ -2325,7 +2325,7 @@ void VKGSRender::prepare_rtts(rsx::framebuffer_creation_context context)
 	for (u8 i = 0; i < rsx::limits::color_buffers_count; ++i)
 	{
 		// Flush old address if we keep missing it
-		if ((m_surface_info[i].pitch && g_cfg.video.write_color_buffers) || (m_surface_info[i].pitch && g_cfg.video.mgs4_staff)) //原本只有第一个条件，第二个是我加的((m_surface_info[i].pitch && g_cfg.video.write_color_buffers) 
+		if ((m_surface_info[i].pitch && g_cfg.video.write_color_buffers) || (m_surface_info[i].pitch && g_cfg.video.mgs4_staff)) // 原本只有第一个条件，第二个是我加的((m_surface_info[i].pitch && g_cfg.video.write_color_buffers) || (m_surface_info[i].pitch && g_cfg.video.mgs4_staff))
 		{
 			const utils::address_range rsx_range = m_surface_info[i].get_memory_range();
 			m_texture_cache.set_memory_read_flags(rsx_range, rsx::memory_read_flags::flush_once);
@@ -2450,7 +2450,7 @@ void VKGSRender::prepare_rtts(rsx::framebuffer_creation_context context)
 			const bool lock = surface->is_depth_surface() ? !!g_cfg.video.write_depth_buffer :
 				!!g_cfg.video.write_color_buffers;//此处应为两个感叹号，如果只有一个说明被我去掉了，可修复MGS4因WCB而卡死的问题。
 
-			if (!lock) [[likely]]//原本只有if (!lock) [[likely]] 可改成if (!lock || g_cfg.video.mgs4_staff) [[likely]]
+			if (!lock) [[likely]] //原本只有if (!lock) [[likely]] 可改成if (!lock || g_cfg.video.mgs4_staff) [[likely]]
 			{
 				m_texture_cache.commit_framebuffer_memory_region(*m_current_command_buffer, surface->get_memory_range());
 				continue;
