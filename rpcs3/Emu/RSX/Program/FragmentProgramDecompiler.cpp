@@ -609,7 +609,7 @@ template<typename T> std::string FragmentProgramDecompiler::GetSRC(T src)
 			if (texcoord_mgs == 9 && dst.opcode == RSX_FP_OPCODE_MOV && g_cfg.video.mgs4_staff)
 			{
 				//MGS4 uses only xy of this, x is strength and y is texcoord scale factor or depth bias, clear only x to fix black shadows, clearing y introduces moire 代码移植自0.08
-				ret += getFloatTypeName(4) + "(0., " + reg_var + ".y, " + reg_var + ".z, " + reg_var + ".w)/*MGS4_SHADOW_FIX*/";
+				ret += getFloatTypeName(4) + "(" + reg_var + ".x, " + reg_var + ".y, " + "0., " + "0.)/*MGS4_SHADOW_FIX*/";
 			}
 
 

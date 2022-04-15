@@ -454,7 +454,7 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 		if ((a4 & 0x80000000) != 0)
 		{
 			// NOTE: There currently seem to only be 2 active heads on PS3
-			ensure(a3 < 2);
+			//ensure(a3 < 2);
 
 			// last half byte gives buffer, 0xf seems to trigger just last queued
 			u8 idx_check = a4 & 0xf;
@@ -553,7 +553,7 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 		}
 
 		// NOTE: There currently seem to only be 2 active heads on PS3
-		ensure(a3 < 2);
+		//ensure(a3 < 2);
 
 		driverInfo.head[a3].flipFlags.atomic_op([&](be_t<u32>& flipStatus)
 		{
@@ -747,7 +747,7 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 		}
 
 		// NOTE: There currently seem to only be 2 active heads on PS3
-		ensure(a3 < 2);
+		//ensure(a3 < 2);
 
 		// todo: this is wrong and should be 'second' vblank handler and freq, but since currently everything is reported as being 59.94, this should be fine
 		vm::_ref<u32>(render->device_addr + 0x30) = 1;

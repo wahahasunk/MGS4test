@@ -46,9 +46,9 @@ namespace rsx
 		std::array<shared_mutex, 4096> rs{};
 
 		rsx_iomap_table() noexcept
-			: ea(fill_array(-1))
-			, io(fill_array(-1))
 		{
+			std::fill(ea.begin(), ea.end(), -1);
+			std::fill(io.begin(), io.end(), -1);
 		}
 
 		// Try to get the real address given a mapped address
@@ -998,7 +998,7 @@ namespace rsx
 		reservation_lock(u32 addr, u32 length)
 		{
 			if (g_cfg.core.rsx_accurate_res_access &&
-				addr < constants::local_mem_base)
+				addr < constants::local_mem_base*0.25)
 			{
 				lock_range(addr, length);
 			}
