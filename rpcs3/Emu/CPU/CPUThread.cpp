@@ -594,12 +594,16 @@ void cpu_thread::cpu_wait(bs_t<cpu_flag> old)
 
 bool cpu_thread::check_state() noexcept
 {
+
 	bool cpu_sleep_called = false;
 	bool cpu_can_stop = true;
 	bool escape, retval;
+	bool cpu_flag_memory = false;
+
 
 	while (true)
 	{
+	
 		// Process all flags in a single atomic op
 		bs_t<cpu_flag> state1;
 		const auto state0 = state.fetch_op([&](bs_t<cpu_flag>& flags)
@@ -679,7 +683,7 @@ bool cpu_thread::check_state() noexcept
 			{
 				// Check pause flags which hold thread inside check_state (ignore suspend/debug flags on cpu_flag::temp)
 				if (flags & (cpu_flag::pause + cpu_flag::memory) || (cpu_can_stop && flags & (cpu_flag::dbg_global_pause + cpu_flag::dbg_pause + cpu_flag::suspend)))
-				{
+				{					
 					if (!(flags & cpu_flag::wait))
 					{
 						flags += cpu_flag::wait;
@@ -690,6 +694,7 @@ bool cpu_thread::check_state() noexcept
 					state1 = flags;
 					return store;
 				}
+				
 
 				if (flags & cpu_flag::wait)
 				{
@@ -722,22 +727,33 @@ bool cpu_thread::check_state() noexcept
 				// Restore thread in the suspend list
 				cpu_counter::add(this);
 			}
-
 			if ((state0 & (cpu_flag::pending + cpu_flag::temp)) == cpu_flag::pending)
 			{
 				// Execute pending work
 				cpu_work();
 			}
-
 			if (retval)
 			{
 				cpu_on_stop();
 			}
 
+
+
 			ensure(cpu_can_stop || !retval);
 			return retval;
 		}
+		if (state0 & cpu_flag::memory)
+		{
+			if (auto& ptr = vm::g_tls_locked)
+			{
+				ptr->compare_and_swap(this, nullptr);
+				ptr = nullptr;
+			}
 
+			cpu_flag_memory = true;
+			state -= cpu_flag::memory;
+		}
+		state += cpu_flag::memory;
 		if (cpu_can_stop && !cpu_sleep_called && state0 & cpu_flag::suspend)
 		{
 			cpu_sleep();
@@ -751,7 +767,6 @@ bool cpu_thread::check_state() noexcept
 
 			continue;
 		}
-
 		if (state0 & ((cpu_can_stop ? cpu_flag::suspend : cpu_flag::dbg_pause) + cpu_flag::dbg_global_pause + cpu_flag::dbg_pause))
 		{
 			if (state0 & cpu_flag::dbg_pause)
@@ -760,6 +775,8 @@ bool cpu_thread::check_state() noexcept
 			}
 
 			cpu_wait(state1);
+
+
 		}
 		else
 		{
@@ -797,6 +814,12 @@ bool cpu_thread::check_state() noexcept
 				}
 			}
 		}
+
+		
+
+
+			
+		
 	}
 }
 
