@@ -594,16 +594,12 @@ void cpu_thread::cpu_wait(bs_t<cpu_flag> old)
 
 bool cpu_thread::check_state() noexcept
 {
-
 	bool cpu_sleep_called = false;
 	bool cpu_can_stop = true;
 	bool escape, retval;
-	bool cpu_flag_memory = false;
-
 
 	while (true)
-	{
-	
+	{	
 		// Process all flags in a single atomic op
 		bs_t<cpu_flag> state1;
 		const auto state0 = state.fetch_op([&](bs_t<cpu_flag>& flags)
@@ -655,8 +651,7 @@ bool cpu_thread::check_state() noexcept
 			{
 				flags -= cpu_flag::signal;
 				cpu_sleep_called = false;
-				store = true;
-			}
+				store = true;			}
 
 			// Can't process dbg_step if we only paused temporarily
 			if (cpu_can_stop && flags & cpu_flag::dbg_step)
@@ -689,7 +684,6 @@ bool cpu_thread::check_state() noexcept
 						flags += cpu_flag::wait;
 						store = true;
 					}
-
 					escape = false;
 					state1 = flags;
 					return store;
@@ -736,12 +730,10 @@ bool cpu_thread::check_state() noexcept
 			{
 				cpu_on_stop();
 			}
-
-
-
 			ensure(cpu_can_stop || !retval);
 			return retval;
 		}
+
 		if (state0 & cpu_flag::memory)
 		{
 			if (auto& ptr = vm::g_tls_locked)
@@ -749,10 +741,9 @@ bool cpu_thread::check_state() noexcept
 				ptr->compare_and_swap(this, nullptr);
 				ptr = nullptr;
 			}
-
-			cpu_flag_memory = true;
 			state -= cpu_flag::memory;
 		}
+
 		state += cpu_flag::memory;
 		if (cpu_can_stop && !cpu_sleep_called && state0 & cpu_flag::suspend)
 		{
@@ -767,17 +758,16 @@ bool cpu_thread::check_state() noexcept
 
 			continue;
 		}
+
 		if (state0 & ((cpu_can_stop ? cpu_flag::suspend : cpu_flag::dbg_pause) + cpu_flag::dbg_global_pause + cpu_flag::dbg_pause))
 		{
 			if (state0 & cpu_flag::dbg_pause)
 			{
 				g_fxo->get<gdb_server>().pause_from(this);
 			}
-
 			cpu_wait(state1);
-
-
 		}
+
 		else
 		{
 			if (state0 & cpu_flag::memory)
@@ -813,13 +803,7 @@ bool cpu_thread::check_state() noexcept
 					}
 				}
 			}
-		}
-
-		
-
-
-			
-		
+		}		
 	}
 }
 

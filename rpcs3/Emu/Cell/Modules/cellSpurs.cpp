@@ -493,8 +493,8 @@ s32 cellSpursRunJobChain(ppu_thread& ppu, vm::ptr<CellSpursJobChain> jobChain);
 //s32 cellSpursGetJobPipelineInfo();
 //s32 cellSpursJobSetMaxGrab();
 //s32 cellSpursJobHeaderSetJobbin2Param();
-//s32 cellSpursAddUrgentCommand();
-//s32 cellSpursAddUrgentCall();
+s32 cellSpursAddUrgentCommand(ppu_thread& ppu, vm::ptr<CellSpursJobChain> jobChain, u64 newCmd);
+s32 cellSpursAddUrgentCall(ppu_thread& ppu, vm::ptr<CellSpursJobChain> jobChain, vm::ptr<u64> commandList);
 
 //----------------------------------------------------------------------------
 // SPURS utility functions
@@ -5116,7 +5116,7 @@ s32 cellSpursAddUrgentCommand(ppu_thread& ppu, vm::ptr<CellSpursJobChain> jobCha
 	if (!jobChain)
 		return CELL_SPURS_JOB_ERROR_NULL_POINTER;
 
-	if (!jobChain.aligned())
+	if (!jobChain.aligned(128))
 		return CELL_SPURS_JOB_ERROR_ALIGN;
 
 	if (jobChain->workloadId >= CELL_SPURS_MAX_WORKLOAD2)
@@ -5181,7 +5181,7 @@ s32 cellSpursAddUrgentCall(ppu_thread& ppu, vm::ptr<CellSpursJobChain> jobChain,
 	if (!commandList)
 		return CELL_SPURS_JOB_ERROR_NULL_POINTER;
 
-	if (!commandList.aligned())
+	if (!commandList.aligned(8))
 		return CELL_SPURS_JOB_ERROR_ALIGN;
 
 	return cellSpursAddUrgentCommand(ppu, jobChain, commandList.addr() | CELL_SPURS_JOB_OPCODE_CALL);
