@@ -597,6 +597,7 @@ bool cpu_thread::check_state() noexcept
 	bool cpu_sleep_called = false;
 	bool cpu_can_stop = true;
 	bool escape, retval;
+	bool cpu_flag_memory = false;
 
 	while (true)
 	{	
@@ -676,6 +677,17 @@ bool cpu_thread::check_state() noexcept
 			// Atomically clean wait flag and escape
 			if (!(flags & (cpu_flag::exit + cpu_flag::ret + cpu_flag::stop)))
 			{
+				if (flags & cpu_flag::memory)
+				{//wait flag will be cleared later (optimization)
+					cpu_flag_memory = true;
+				}
+				else
+				{
+					AUDIT(!cpu_flag_memory);
+					flags -= cpu_flag::wait;
+					store = true;
+				}
+
 				// Check pause flags which hold thread inside check_state (ignore suspend/debug flags on cpu_flag::temp)
 				if (flags & (cpu_flag::pause + cpu_flag::memory) || (cpu_can_stop && flags & (cpu_flag::dbg_global_pause + cpu_flag::dbg_pause + cpu_flag::suspend)))
 				{					
@@ -734,7 +746,7 @@ bool cpu_thread::check_state() noexcept
 			return retval;
 		}
 
-		if (state0 & cpu_flag::memory)
+		if (/* state0 & cpu_flag::memory*/cpu_flag_memory)
 		{
 			if (auto& ptr = vm::g_tls_locked)
 			{
