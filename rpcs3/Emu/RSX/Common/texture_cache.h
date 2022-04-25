@@ -3081,6 +3081,10 @@ namespace rsx
 
 				lock.upgrade();
 
+				if (g_cfg.video.mgs4_staff) //// Workaround for flickering shadows and missing water
+					cached_dest->reprotect(utils::protection::ro, {mem_offset, dst_payload_length});
+				else
+
 				cached_dest->reprotect(utils::protection::no, { mem_offset, dst_payload_length });
 				cached_dest->touch(m_cache_update_tag);
 				update_cache_tag();

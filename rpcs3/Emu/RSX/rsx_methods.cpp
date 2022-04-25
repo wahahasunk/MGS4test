@@ -668,7 +668,7 @@ namespace rsx
 			case 2:
 				break;
 			default:
-				rsx_log.error("Unknown render mode %d", mode);
+				//rsx_log.error("Unknown render mode %d", mode);
 				return;
 			}
 

@@ -597,6 +597,7 @@ bool cpu_thread::check_state() noexcept
 	bool cpu_sleep_called = false;
 	bool cpu_can_stop = true;
 	bool escape, retval;
+	bool cpu_flag_memory = false;
 
 	while (true)
 	{
@@ -738,6 +739,18 @@ bool cpu_thread::check_state() noexcept
 			return retval;
 		}
 
+		if (/*state0 & cpu_flag::memory*/cpu_flag_memory)
+		{
+			if (auto& ptr = vm::g_tls_locked)
+			{
+				ptr->compare_and_swap(this, nullptr);
+				ptr = nullptr;
+			}
+			state -= cpu_flag::memory;
+		}
+
+		state += cpu_flag::memory;
+
 		if (cpu_can_stop && !cpu_sleep_called && state0 & cpu_flag::suspend)
 		{
 			cpu_sleep();
@@ -769,33 +782,7 @@ bool cpu_thread::check_state() noexcept
 				continue;
 			}
 
-			// If only cpu_flag::pause was set, wait on suspend counter instead
-			if (state0 & cpu_flag::pause)
-			{
-				// Wait for current suspend_all operation
-				for (u64 i = 0;; i++)
-				{
-					u64 ctr = g_suspend_counter;
-
-					if (ctr >> 2 == s_tls_sctr >> 2 && state & cpu_flag::pause)
-					{
-						if (i < 20 || ctr & 1)
-						{
-							busy_wait(300);
-						}
-						else
-						{
-							// TODO: fix the workaround
-							g_suspend_counter.wait(ctr, -4, atomic_wait_timeout{100});
-						}
-					}
-					else
-					{
-						s_tls_sctr = -1;
-						break;
-					}
-				}
-			}
+			
 		}
 	}
 }
