@@ -601,6 +601,17 @@ bool cpu_thread::check_state() noexcept
 
 	while (true)
 	{
+		if (state & cpu_flag::memory)
+		{
+			if (auto& ptr = vm::g_tls_locked)
+			{
+				ptr->compare_and_swap(this, nullptr);
+				ptr = nullptr;
+			}
+
+			cpu_flag_memory = true;
+			state -= cpu_flag::stop & cpu_flag::memory;
+		}
 		// Process all flags in a single atomic op
 		bs_t<cpu_flag> state1;
 		const auto state0 = state.fetch_op([&](bs_t<cpu_flag>& flags)
