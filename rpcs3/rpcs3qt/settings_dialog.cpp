@@ -62,6 +62,8 @@ settings_dialog::settings_dialog(std::shared_ptr<gui_settings> gui_settings, std
 	if (!m_gui_settings->GetValue(gui::m_showDebugTab).toBool())
 	{
 		ui->tab_widget_settings->removeTab(9);
+		ui->audioDump->setVisible(false);
+		ui->audioDump->setChecked(false);
 		m_gui_settings->SetValue(gui::m_showDebugTab, false);
 	}
 	if (game)
@@ -958,6 +960,13 @@ settings_dialog::settings_dialog(std::shared_ptr<gui_settings> gui_settings, std
 	// TODO: enable this setting once cellAudioOutConfigure can change downmix on the fly
 	ui->combo_audio_downmix->removeItem(static_cast<int>(audio_downmix::use_application_settings));
 
+	m_emu_settings->EnhanceComboBox(ui->audioProviderBox, emu_settings_type::AudioProvider);
+	SubscribeTooltip(ui->gb_audio_provider, tooltips.settings.audio_provider);
+	ui->gb_audio_provider->setVisible(false); // Hidden for now. This option is forced on boot.
+
+	m_emu_settings->EnhanceComboBox(ui->audioAvportBox, emu_settings_type::AudioAvport);
+	SubscribeTooltip(ui->gb_audio_avport, tooltips.settings.audio_avport);
+
 	// Microphone Comboboxes
 	m_mics_combo[0] = ui->microphone1Box;
 	m_mics_combo[1] = ui->microphone2Box;
@@ -1232,6 +1241,9 @@ settings_dialog::settings_dialog(std::shared_ptr<gui_settings> gui_settings, std
 
 	m_emu_settings->EnhanceCheckBox(ui->disableOnDiskShaderCache, emu_settings_type::DisableOnDiskShaderCache);
 	SubscribeTooltip(ui->disableOnDiskShaderCache, tooltips.settings.disable_on_disk_shader_cache);
+	
+	m_emu_settings->EnhanceCheckBox(ui->forceDisableExclusiveFullscreenMode, emu_settings_type::ForceDisableExclusiveFullscreenMode);
+	SubscribeTooltip(ui->forceDisableExclusiveFullscreenMode, tooltips.settings.force_disable_exclusive_fullscreen_mode);
 
 	ui->mfcDelayCommand->setChecked(m_emu_settings->GetSetting(emu_settings_type::MFCCommandsShuffling) == "1");
 	SubscribeTooltip(ui->mfcDelayCommand, tooltips.settings.mfc_delay_command);
