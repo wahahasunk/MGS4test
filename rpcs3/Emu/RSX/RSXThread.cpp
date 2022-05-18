@@ -2560,7 +2560,7 @@ namespace rsx
 				break;
 			}
 		}
-		else if (g_cfg.video.mgs4_staff)
+		else if (g_cfg.video.zcull_hack)
 		{
 			value = g_cfg.video.zcull_default_value;
 		}
