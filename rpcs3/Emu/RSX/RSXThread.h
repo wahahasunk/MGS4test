@@ -47,9 +47,9 @@ namespace rsx
 		std::array<shared_mutex, 4096> rs{};
 
 		rsx_iomap_table() noexcept
+			: ea(fill_array(-1))
+			, io(fill_array(-1))
 		{
-			std::fill(ea.begin(), ea.end(), -1);
-			std::fill(io.begin(), io.end(), -1);
 		}
 
 		// Try to get the real address given a mapped address
@@ -60,20 +60,42 @@ namespace rsx
 		}
 
 		template<bool IsFullLock>
-		bool lock(u32 addr, u32 len) noexcept
+		bool lock(u32 addr, u32 len, cpu_thread* self = nullptr) noexcept
 		{
 			if (len <= 1) return false;
 			const u32 end = addr + len - 1;
 
 			for (u32 block = (addr >> 20); block <= (end >> 20); ++block)
 			{
+				auto& mutex_ = rs[block];
+
 				if constexpr (IsFullLock)
 				{
-					rs[block].lock();
+					if (self) [[ likely ]]
+					{
+						while (!mutex_.try_lock())
+						{
+							self->cpu_wait({});
+						}
+					}
+					else
+					{
+						mutex_.lock();
+					}
 				}
 				else
 				{
-					rs[block].lock_shared();
+					if (!self) [[ likely ]]
+					{
+						mutex_.lock_shared();
+					}
+					else
+					{
+						while (!mutex_.try_lock_shared())
+						{
+							self->cpu_wait({});
+						}
+					}
 				}
 			}
 
@@ -146,8 +168,9 @@ namespace rsx
 		backend_interrupt       = 0x0001,        // Backend-related interrupt
 		memory_config_interrupt = 0x0002,        // Memory configuration changed
 		display_interrupt       = 0x0004,        // Display handling
+		pipe_flush_interrupt    = 0x0008,        // Flush pipelines
 
-		all_interrupt_bits = memory_config_interrupt | backend_interrupt | display_interrupt
+		all_interrupt_bits = memory_config_interrupt | backend_interrupt | display_interrupt | pipe_flush_interrupt
 	};
 
 	enum FIFO_state : u8
@@ -627,6 +650,9 @@ namespace rsx
 		atomic_t<u64> vblank_count{0};
 		bool capture_current_frame = false;
 
+		bool wait_for_flip_sema = false;
+		u32 flip_sema_wait_val = 0;
+
 	public:
 		atomic_t<bool> sync_point_request = false;
 		bool in_begin_end = false;
@@ -833,14 +859,15 @@ namespace rsx
 			this->length = length;
 
 			auto renderer = get_current_renderer();
-			this->locked = renderer->iomap_table.lock<IsFullLock>(addr, length);
+			cpu_thread* lock_owner = renderer->is_current_thread() ? renderer : nullptr;
+			this->locked = renderer->iomap_table.lock<IsFullLock>(addr, length, lock_owner);
 		}
 
 	public:
 		reservation_lock(u32 addr, u32 length)
 		{
 			if (g_cfg.core.rsx_accurate_res_access &&
-				addr < constants::local_mem_base*0.25)
+				addr < constants::local_mem_base)
 			{
 				lock_range(addr, length);
 			}

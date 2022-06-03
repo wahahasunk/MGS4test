@@ -472,6 +472,46 @@ void main_window::BootElf()
 	Boot(path, "", true);
 }
 
+void main_window::BootTest()
+{
+	bool stopped = false;
+
+	if (Emu.IsRunning())
+	{
+		Emu.Pause();
+		stopped = true;
+	}
+
+#ifdef _WIN32
+	const QString path_tests = QString::fromStdString(fs::get_config_dir()) + "/test/";
+#elif defined(__linux__)
+	const QString path_tests = QCoreApplication::applicationDirPath() + "/../share/rpcs3/test/";
+#else
+	const QString path_tests = QCoreApplication::applicationDirPath() + "/../Resources/test/";
+#endif
+
+	const QString file_path = QFileDialog::getOpenFileName(this, tr("Select (S)ELF To Boot"), path_tests, tr(
+		"(S)ELF files (*.elf *.self);;"
+		"ELF files (*.elf);;"
+		"SELF files (*.self);;"
+		"All files (*.*)"),
+		Q_NULLPTR, QFileDialog::DontResolveSymlinks);
+
+	if (file_path.isEmpty())
+	{
+		if (stopped)
+		{
+			Emu.Resume();
+		}
+		return;
+	}
+
+	const std::string path = sstr(QFileInfo(file_path).absoluteFilePath());
+
+	gui_log.notice("Booting from BootTest...");
+	Boot(path, "", true);
+}
+
 void main_window::BootGame()
 {
 	bool stopped = false;
@@ -1903,6 +1943,7 @@ void main_window::CreateActions()
 void main_window::CreateConnects()
 {
 	connect(ui->bootElfAct, &QAction::triggered, this, &main_window::BootElf);
+	connect(ui->bootTestAct, &QAction::triggered, this, &main_window::BootTest);
 	connect(ui->bootGameAct, &QAction::triggered, this, &main_window::BootGame);
 	connect(ui->bootVSHAct, &QAction::triggered, this, &main_window::BootVSH);
 	connect(ui->actionopen_rsx_capture, &QAction::triggered, this, [this](){ BootRsxCapture(); });
@@ -2251,7 +2292,7 @@ void main_window::CreateConnects()
 	connect(ui->updateAct, &QAction::triggered, this, [this]()
 	{
 #if !defined(_WIN32) && !defined(__linux__)
-		QMessageBox::warning(this, tr("Auto-updater"), tr("The auto-updater currently isn't available for your os."));
+		QMessageBox::warning(this, tr("Auto-updater"), tr("The auto-updater isn't available for your OS currently."));
 		return;
 #endif
 		m_updater.check_for_updates(false, false, false, this);
@@ -2602,7 +2643,7 @@ void main_window::RemoveDiskCache()
 {
 	const std::string cache_dir = rpcs3::utils::get_hdd1_dir() + "/caches";
 
-	if (fs::is_dir(cache_dir) && fs::remove_all(cache_dir, false))
+	if (fs::remove_all(cache_dir, false))
 	{
 		QMessageBox::information(this, tr("Cache Cleared"), tr("Disk cache was cleared successfully"));
 	}

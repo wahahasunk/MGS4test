@@ -654,7 +654,7 @@ namespace rsx
 #else
 			constexpr u32 host_min_quantum = 500;
 #endif
-			u64 start_time = rsx::uclock();
+			u64 start_time = get_system_time();
 
 			u64 vblank_rate = g_cfg.video.vblank_rate;
 			u64 vblank_period = 1'000'000 + u64{g_cfg.video.vblank_ntsc.get()} * 1000;
@@ -665,7 +665,7 @@ namespace rsx
 			while (!is_stopped())
 			{
 				// Get current time
-				const u64 current = rsx::uclock();
+				const u64 current = get_system_time();
 
 				// Calculate the time at which we need to send a new VBLANK signal
 				const u64 post_event_time = start_time + (local_vblank_count + 1) * vblank_period / vblank_rate;
@@ -711,7 +711,7 @@ namespace rsx
 						}
 						else
 						{
-							sys_rsx_context_attribute(0x55555555, 0xFED, 1, post_event_time, 0, 0);
+							sys_rsx_context_attribute(0x55555555, 0xFED, 1, get_guest_system_time(post_event_time), 0, 0);
 						}
 					}
 				}
@@ -1069,6 +1069,11 @@ namespace rsx
 					handle_invalidated_memory_range();
 				}
 			}
+		}
+
+		if (m_eng_interrupt_mask & rsx::pipe_flush_interrupt)
+		{
+			sync();
 		}
 	}
 
@@ -2615,6 +2620,8 @@ namespace rsx
 
 	void thread::sync()
 	{
+		m_eng_interrupt_mask.clear(rsx::pipe_flush_interrupt);
+
 		if (zcull_ctrl->has_pending())
 		{
 			zcull_ctrl->sync(this);
@@ -2945,6 +2952,9 @@ namespace rsx
 				}
 			}
 
+			// Pause RSX thread momentarily to handle unmapping
+			eng_lock elock(this);
+
 			// Queue up memory invalidation
 			std::lock_guard lock(m_mtx_task);
 			const bool existing_range_valid = m_invalidated_memory_range.valid();
@@ -3192,6 +3202,7 @@ namespace rsx
 		case frame_limit_type::_60: limit = 60.; break;
 		case frame_limit_type::_30: limit = 30.; break;
 		case frame_limit_type::_auto: limit = static_cast<double>(g_cfg.video.vblank_rate); break;
+		case frame_limit_type::_ps3: limit = 0.; break;
 		default:
 			break;
 		}
@@ -3226,6 +3237,19 @@ namespace rsx
 					performance_counters.idle_time += delay_us;
 				}
 			}
+		}
+		else if (wait_for_flip_sema)
+		{
+			const auto& value = vm::_ref<RsxSemaphore>(device_addr + 0x30).val;
+			if (value != flip_sema_wait_val)
+			{
+				// Not yet signaled, handle it later
+				async_flip_requested |= flip_request::emu_requested;
+				async_flip_buffer = buffer;
+				return;
+			}
+
+			wait_for_flip_sema = false;
 		}
 
 		int_flip_index++;

@@ -498,9 +498,8 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 		driverInfo.head[a3].lastQueuedBufferId = static_cast<u32>(a4);
 		driverInfo.head[a3].flipFlags |= 0x40000000 | (1 << a4);
 
-		render->send_event(0, SYS_RSX_EVENT_QUEUE_BASE << a3, 0);
-
 		render->on_frame_end(static_cast<u32>(a4));
+		render->send_event(0, SYS_RSX_EVENT_QUEUE_BASE << a3, 0);
 	}
 	break;
 
@@ -732,7 +731,8 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 		driverInfo.head[1].flipBufferId = static_cast<u32>(a3);
 
 		// seems gcmSysWaitLabel uses this offset, so lets set it to 0 every flip
-		vm::_ref<u32>(render->label_addr + 0x10) = 0;
+		// NOTE: Realhw resets 16 bytes of this semaphore for some reason
+		vm::_ref<atomic_t<u128>>(render->label_addr + 0x10).store(u128{});
 
 		render->send_event(0, SYS_RSX_EVENT_FLIP_BASE << 1, 0);
 		break;
@@ -751,8 +751,8 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 		// todo: this is wrong and should be 'second' vblank handler and freq, but since currently everything is reported as being 59.94, this should be fine
 		vm::_ref<u32>(render->device_addr + 0x30) = 1;
 
-		// Time point is supplied in argument 4
-		const u64 current_time = a4;
+		// Time point is supplied in argument 4 (todo: convert it to MFTB rate and use it)
+		const u64 current_time = rsxTimeStamp();
 
 		driverInfo.head[a3].lastSecondVTime = current_time;
 
