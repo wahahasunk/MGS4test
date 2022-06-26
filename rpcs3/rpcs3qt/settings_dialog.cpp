@@ -1341,6 +1341,12 @@ settings_dialog::settings_dialog(std::shared_ptr<gui_settings> gui_settings, std
 	m_emu_settings->EnhanceComboBox(ui->sleepTimersAccuracy, emu_settings_type::SleepTimersAccuracy);
 	SubscribeTooltip(ui->gb_sleep_timers_accuracy, tooltips.settings.sleep_timers_accuracy);
 
+	m_emu_settings->EnhanceComboBox(ui->FIFOAccuracy, emu_settings_type::FIFOAccuracy);
+	SubscribeTooltip(ui->gb_rsx_fifo_accuracy, tooltips.settings.rsx_fifo_accuracy);
+
+	// Hide a developers' setting
+	ui->FIFOAccuracy->removeItem(static_cast<int>(rsx_fifo_mode::as_ps3));
+
 	m_emu_settings->EnhanceComboBox(ui->vulkansched, emu_settings_type::VulkanAsyncSchedulerDriver);
 	SubscribeTooltip(ui->gb_vulkansched, tooltips.settings.vulkan_async_scheduler);
 
@@ -2043,6 +2049,9 @@ settings_dialog::settings_dialog(std::shared_ptr<gui_settings> gui_settings, std
 	m_emu_settings->EnhanceCheckBox(ui->disableHwOcclusionQueries, emu_settings_type::DisableOcclusionQueries);
 	SubscribeTooltip(ui->disableHwOcclusionQueries, tooltips.settings.disable_occlusion_queries);
 
+	m_emu_settings->EnhanceCheckBox(ui->disableVideoOutput, emu_settings_type::DisableVideoOutput);
+	SubscribeTooltip(ui->disableVideoOutput, tooltips.settings.disable_video_output);
+
 	m_emu_settings->EnhanceCheckBox(ui->forceCpuBlitEmulation, emu_settings_type::ForceCPUBlitEmulation);
 	SubscribeTooltip(ui->forceCpuBlitEmulation, tooltips.settings.force_cpu_blit_emulation);
 
@@ -2120,8 +2129,6 @@ settings_dialog::settings_dialog(std::shared_ptr<gui_settings> gui_settings, std
 settings_dialog::~settings_dialog()
 {
 	m_gui_settings->SetValue(gui::cfg_geometry, saveGeometry());
-
-	delete ui;
 }
 
 void settings_dialog::EnhanceSlider(emu_settings_type settings_type, QSlider* slider, QLabel* label, const QString& label_text) const

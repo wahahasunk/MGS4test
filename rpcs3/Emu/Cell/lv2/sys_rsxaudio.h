@@ -2,7 +2,6 @@
 
 #include "sys_sync.h"
 #include "sys_event.h"
-#include "Utilities/Timer.h"
 #include "Utilities/simple_ringbuf.h"
 #include "Utilities/transactional_storage.h"
 #include "Utilities/cond.h"
@@ -475,7 +474,7 @@ private:
 		bool convert_to_s16 = false;
 		bool enable_time_stretching = false;
 		bool dump_to_file = false;
-		AudioChannelCnt downmix = AudioChannelCnt::STEREO;
+		AudioChannelCnt channels = AudioChannelCnt::STEREO;
 		audio_renderer renderer = audio_renderer::null;
 		audio_provider provider = audio_provider::none;
 		RsxaudioAvportIdx avport = RsxaudioAvportIdx::HDMI_0;

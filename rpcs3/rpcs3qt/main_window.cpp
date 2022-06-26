@@ -29,6 +29,7 @@
 #include "gui_settings.h"
 #include "input_dialog.h"
 #include "camera_settings_dialog.h"
+#include "ipc_settings_dialog.h"
 
 #include <thread>
 #include <charconv>
@@ -99,13 +100,12 @@ main_window::main_window(std::shared_ptr<gui_settings> gui_settings, std::shared
 main_window::~main_window()
 {
 	SaveWindowState();
-	delete ui;
 }
 
 /* An init method is used so that RPCS3App can create the necessary connects before calling init (specifically the stylesheet connect).
  * Simplifies logic a bit.
  */
-bool main_window::Init(bool with_cli_boot)
+bool main_window::Init([[maybe_unused]] bool with_cli_boot)
 {
 	setAcceptDrops(true);
 
@@ -219,7 +219,7 @@ bool main_window::Init(bool with_cli_boot)
 
 	QMenu* download_menu = new QMenu(tr("Update Available!"));
 
-	QAction *download_action = new QAction(tr("Download Update"), download_menu);
+	QAction* download_action = new QAction(tr("Download Update"), download_menu);
 	connect(download_action, &QAction::triggered, this, [this]
 	{
 		m_updater.update(false);
@@ -1056,7 +1056,7 @@ void main_window::HandlePupInstallation(const QString& file_path, const QString&
 		Emu.CallFromMainThread([this, str = std::move(str)]()
 		{
 			QMessageBox::critical(this, tr("Firmware Installation Failed"), str);
-		}, false);
+		}, nullptr, false);
 	};
 
 	if (file_path.isEmpty())
@@ -1316,7 +1316,7 @@ void main_window::HandlePupInstallation(const QString& file_path, const QString&
 }
 
 // This is ugly, but PS3 headers shall not be included there.
-extern u32 sysutil_send_system_cmd(u64 status, u64 param);
+extern s32 sysutil_send_system_cmd(u64 status, u64 param);
 
 void main_window::DecryptSPRXLibraries()
 {
@@ -1421,11 +1421,27 @@ void main_window::RepaintThumbnailIcons()
 
 void main_window::RepaintToolBarIcons()
 {
-	const QColor new_color = gui::utils::get_label_color("toolbar_icon_color");
+	std::map<QIcon::Mode, QColor> new_colors{};
+	new_colors[QIcon::Normal] = gui::utils::get_label_color("toolbar_icon_color");
 
-	const auto icon = [&new_color](const QString& path)
+	const QString sheet = static_cast<QApplication *>(QCoreApplication::instance())->styleSheet();
+
+	if (sheet.contains("toolbar_icon_color_disabled"))
 	{
-		return gui::utils::get_colorized_icon(QIcon(path), Qt::black, new_color);
+		new_colors[QIcon::Disabled] = gui::utils::get_label_color("toolbar_icon_color_disabled");
+	}
+	if (sheet.contains("toolbar_icon_color_active"))
+	{
+		new_colors[QIcon::Active] = gui::utils::get_label_color("toolbar_icon_color_active");
+	}
+	if (sheet.contains("toolbar_icon_color_selected"))
+	{
+		new_colors[QIcon::Selected] = gui::utils::get_label_color("toolbar_icon_color_selected");
+	}
+
+	const auto icon = [&new_colors](const QString& path)
+	{
+		return gui::utils::get_colorized_icon(QIcon(path), Qt::black, new_colors);
 	};
 
 	m_icon_play           = icon(":/Icons/play.png");
@@ -1465,6 +1481,7 @@ void main_window::RepaintToolBarIcons()
 		ui->toolbar_fullscreen->setIcon(m_icon_fullscreen_on);
 	}
 
+	const QColor& new_color = new_colors[QIcon::Normal];
 	ui->sizeSlider->setStyleSheet(ui->sizeSlider->styleSheet().append("QSlider::handle:horizontal{ background: rgba(%1, %2, %3, %4); }")
 		.arg(new_color.red()).arg(new_color.green()).arg(new_color.blue()).arg(new_color.alpha()));
 
@@ -1666,7 +1683,6 @@ void main_window::EnableMenus(bool enabled) const
 
 	// PS3 Commands
 	ui->sysSendOpenMenuAct->setEnabled(enabled);
-	ui->sysSendExitAct->setEnabled(enabled);
 
 	// Tools
 	ui->toolskernel_explorerAct->setEnabled(enabled);
@@ -1674,6 +1690,16 @@ void main_window::EnableMenus(bool enabled) const
 	ui->toolsRsxDebuggerAct->setEnabled(enabled);
 	ui->toolsStringSearchAct->setEnabled(enabled);
 	ui->actionCreate_RSX_Capture->setEnabled(enabled);
+}
+
+void main_window::OnEnableDiscEject(bool enabled) const
+{
+	ui->ejectDiscAct->setEnabled(enabled);
+}
+
+void main_window::OnEnableDiscInsert(bool enabled) const
+{
+	ui->insertDiscAct->setEnabled(enabled);
 }
 
 void main_window::BootRecentAction(const QAction* act)
@@ -2037,6 +2063,34 @@ void main_window::CreateConnects()
 		Emu.Restart();
 	});
 
+	connect(ui->ejectDiscAct, &QAction::triggered, this, []()
+	{
+		gui_log.notice("User triggered eject disc action in menu bar");
+		Emu.EjectDisc();
+	});
+	connect(ui->insertDiscAct, &QAction::triggered, this, [this]()
+	{
+		gui_log.notice("User triggered insert disc action in menu bar");
+
+		const QString path_last_game = m_gui_settings->GetValue(gui::fd_insert_disc).toString();
+		const QString dir_path = QFileDialog::getExistingDirectory(this, tr("Select Disc Game Folder"), path_last_game, QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+
+		if (dir_path.isEmpty())
+		{
+			return;
+		}
+
+		const game_boot_result result = Emu.InsertDisc(dir_path.toStdString());
+
+		if (result != game_boot_result::no_errors)
+		{
+			QMessageBox::warning(this, tr("Failed to insert disc"), tr("Make sure that the emulation is running and that the selected path belongs to a valid disc game."));
+			return;
+		}
+
+		m_gui_settings->SetValue(gui::fd_insert_disc, QFileInfo(dir_path).path());
+	});
+
 	connect(ui->sysSendOpenMenuAct, &QAction::triggered, this, [this]()
 	{
 		if (Emu.IsStopped()) return;
@@ -2045,14 +2099,6 @@ void main_window::CreateConnects()
 		sysutil_send_system_cmd(m_sys_menu_opened ? 0x0132 /* CELL_SYSUTIL_SYSTEM_MENU_CLOSE */ : 0x0131 /* CELL_SYSUTIL_SYSTEM_MENU_OPEN */, 0);
 		m_sys_menu_opened ^= true;
 		ui->sysSendOpenMenuAct->setText(tr("Send &%0 system menu cmd").arg(m_sys_menu_opened ? tr("close") : tr("open")));
-	});
-
-	connect(ui->sysSendExitAct, &QAction::triggered, this, []()
-	{
-		if (Emu.IsStopped()) return;
-
-		gui_log.notice("User triggered \"Send exit command\" action in menu bar");
-		sysutil_send_system_cmd(0x0101 /* CELL_SYSUTIL_REQUEST_EXITGAME */, 0);
 	});
 
 	const auto open_settings = [this](int tabIndex)
@@ -2091,6 +2137,12 @@ void main_window::CreateConnects()
 	connect(ui->confRPCNAct, &QAction::triggered, this, [this]()
 	{
 		rpcn_settings_dialog dlg(this);
+		dlg.exec();
+	});
+
+	connect(ui->confIPCAct, &QAction::triggered, this, [this]()
+	{
+		ipc_settings_dialog dlg(this);
 		dlg.exec();
 	});
 

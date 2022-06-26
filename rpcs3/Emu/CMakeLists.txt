@@ -13,6 +13,8 @@ add_library(rpcs3_emu
     title.cpp
     perf_meter.cpp
     perf_monitor.cpp
+    IPC_config.cpp
+    IPC_socket.cpp
 )
 
 # prevent WolfSSL from warning about not having harden options
@@ -103,6 +105,7 @@ target_sources(rpcs3_emu PRIVATE
 
 # Loader
 target_sources(rpcs3_emu PRIVATE
+    ../Loader/disc.cpp
     ../Loader/ELF.cpp
     ../Loader/mself.cpp
     ../Loader/PSF.cpp
@@ -454,6 +457,10 @@ target_sources(rpcs3_emu PRIVATE
     RSX/Program/VertexProgramDecompiler.cpp
     RSX/Capture/rsx_capture.cpp
     RSX/Capture/rsx_replay.cpp
+    RSX/GL/glutils/buffer_object.cpp
+    RSX/GL/glutils/common.cpp
+    RSX/GL/glutils/image.cpp
+    RSX/GL/glutils/ring_buffer.cpp
     RSX/GL/GLCommonDecompiler.cpp
     RSX/GL/GLCompute.cpp
     RSX/GL/GLDraw.cpp

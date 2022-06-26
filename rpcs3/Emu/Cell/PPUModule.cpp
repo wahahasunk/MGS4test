@@ -1455,6 +1455,8 @@ bool ppu_load_exec(const ppu_exec_object& elf)
 		hash[5 + i * 2] = pal[_main.sha1[i] & 15];
 	}
 
+	Emu.SetExecutableHash(hash);
+
 	// Apply the patch
 	auto applied = g_fxo->get<patch_engine>().apply(hash, vm::g_base_addr);
 
@@ -1850,7 +1852,7 @@ bool ppu_load_exec(const ppu_exec_object& elf)
 		g_fxo->init<lv2_memory_container>(mem_size);
 	}
 
-	g_fxo->get<lv2_memory_container>().used += primary_stacksize;
+	ensure(g_fxo->get<lv2_memory_container>().take(primary_stacksize));
 
 	ppu->cmd_push({ppu_cmd::initialize, 0});
 

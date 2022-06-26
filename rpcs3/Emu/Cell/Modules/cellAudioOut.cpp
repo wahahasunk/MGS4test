@@ -39,7 +39,7 @@ audio_out_configuration::audio_out_configuration()
 	std::vector<CellAudioOutSoundMode>& primary_modes = primary_output.sound_modes;
 	std::vector<CellAudioOutSoundMode>& secondary_modes = secondary_output.sound_modes;
 
-	const psf::registry sfo = psf::load_object(fs::file(Emu.GetSfoDir() + "/PARAM.SFO"));
+	const psf::registry sfo = psf::load_object(fs::file(Emu.GetSfoDir(true) + "/PARAM.SFO"));
 	const s32 sound_format = psf::get_integer(sfo, "SOUND_FORMAT", psf::sound_format_flag::lpcm_2); // Default to Linear PCM 2 Ch.
 
 	const bool supports_lpcm_2   = (sound_format & psf::sound_format_flag::lpcm_2);   // Linear PCM 2 Ch.
@@ -54,24 +54,30 @@ audio_out_configuration::audio_out_configuration()
 	if (supports_ac3)      cellSysutil.notice("cellAudioOut: found support for Dolby Digital 5.1 Ch.");
 	if (supports_dts)      cellSysutil.notice("cellAudioOut: found support for DTS 5.1 Ch.");
 
-	const auto add_sound_mode = [](std::vector<CellAudioOutSoundMode>& sound_modes, u8 type, u8 channel, u8 fs, u32 layout)
+	std::array<bool, 2> initial_mode_selected = {};
+
+	const auto add_sound_mode = [&](u32 index, u8 type, u8 channel, u8 fs, u32 layout, bool supported)
 	{
+		audio_out& output = out.at(index);
+		bool& selected = initial_mode_selected.at(index);
+
 		CellAudioOutSoundMode mode{};
 		mode.type = type;
 		mode.channel = channel;
 		mode.fs = fs;
 		mode.layout = layout;
-		sound_modes.push_back(std::move(mode));
-	};
+		output.sound_modes.push_back(std::move(mode));
 
-	const auto add_sound_mode_to_both_outputs = [&](u8 type, u8 channel, u8 fs, u32 layout)
-	{
-		add_sound_mode(primary_modes, type, channel, fs, layout);
-		add_sound_mode(secondary_modes, type, channel, fs, layout);
-	};
+		if (!selected && supported)
+		{
+			// Pre-select the first available sound mode
+			output.channels = channel;
+			output.encoder  = type;
+			output.sound_mode = output.sound_modes.back();
 
-	// Always add Linear PCM 2 Ch.
-	add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_2, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_2CH);
+			selected = true;
+		}
+	};
 
 	// TODO: more formats:
 	// - Each LPCM with other sample frequencies (we currently only support 48 kHz)
@@ -90,41 +96,41 @@ audio_out_configuration::audio_out_configuration()
 	case audio_format::surround_7_1:
 	{
 		// Linear PCM 7.1 Ch. 48 kHz
-		add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_8, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_8CH_LREClrxy);
+		add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_8, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_8CH_LREClrxy, supports_lpcm_7_1);
 		[[fallthrough]]; // Also add all available 5.1 formats in case the game doesn't like 7.1
 	}
 	case audio_format::surround_5_1:
 	{
 		// Linear PCM 5.1 Ch. 48 kHz
-		add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
+		add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_lpcm_5_1);
 		
 		// Dolby Digital 5.1 Ch.
-		add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_AC3, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
+		add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_AC3, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_ac3);
 
 		// DTS 5.1 Ch.
-		add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_DTS, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
+		add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_DTS, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_dts);
 		break;
 	}
 	case audio_format::automatic: // Automatic based on supported formats
 	{
-		if (supports_lpcm_5_1) // Linear PCM 5.1 Ch.
-		{
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
-		}
-
 		if (supports_lpcm_7_1) // Linear PCM 7.1 Ch.
 		{
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_8, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_8CH_LREClrxy);
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_8, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_8CH_LREClrxy, supports_lpcm_7_1);
+		}
+
+		if (supports_lpcm_5_1) // Linear PCM 5.1 Ch.
+		{
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_lpcm_5_1);
 		}
 
 		if (supports_ac3) // Dolby Digital 5.1 Ch.
 		{
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_AC3, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_AC3, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_ac3);
 		}
 
 		if (supports_dts) // DTS 5.1 Ch.
 		{
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_DTS, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_DTS, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_dts);
 		}
 
 		break;
@@ -133,29 +139,30 @@ audio_out_configuration::audio_out_configuration()
 	{
 		const u32 selected_formats = g_cfg.audio.formats;
 
-		if (selected_formats & static_cast<u32>(audio_format_flag::lpcm_5_1_48khz)) // Linear PCM 5.1 Ch. 48 kHz
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
-
 		if (selected_formats & static_cast<u32>(audio_format_flag::lpcm_7_1_48khz)) // Linear PCM 7.1 Ch. 48 kHz
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_8, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_8CH_LREClrxy);
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_8, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_8CH_LREClrxy, supports_lpcm_7_1);
+
+		if (selected_formats & static_cast<u32>(audio_format_flag::lpcm_5_1_48khz)) // Linear PCM 5.1 Ch. 48 kHz
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_lpcm_5_1);
 
 		if (selected_formats & static_cast<u32>(audio_format_flag::ac3)) // Dolby Digital 5.1 Ch.
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_AC3, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_AC3, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_ac3);
 
 		if (selected_formats & static_cast<u32>(audio_format_flag::dts)) // DTS 5.1 Ch.
-			add_sound_mode_to_both_outputs(CELL_AUDIO_OUT_CODING_TYPE_DTS, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr);
+			add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_DTS, CELL_AUDIO_OUT_CHNUM_6, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_6CH_LREClr, supports_dts);
+
 		break;
 	}
 	}
 
-	ensure(!primary_modes.empty());
-	ensure(!secondary_modes.empty());
+	// Always add Linear PCM 2 Ch. to the primary output
+	add_sound_mode(CELL_AUDIO_OUT_PRIMARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_2, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_2CH, true);
 
-	// Pre-select the first available sound mode
-	primary_output.channels   = primary_modes.front().channel;
-	primary_output.encoder    = primary_modes.front().type;
-	secondary_output.channels = secondary_modes.front().channel;
-	secondary_output.encoder  = secondary_modes.front().type;
+	// The secondary output only supports Linear PCM 2 Ch.
+	add_sound_mode(CELL_AUDIO_OUT_SECONDARY, CELL_AUDIO_OUT_CODING_TYPE_LPCM, CELL_AUDIO_OUT_CHNUM_2, CELL_AUDIO_OUT_FS_48KHZ, CELL_AUDIO_OUT_SPEAKER_LAYOUT_2CH, true);
+
+	ensure(!primary_modes.empty() && initial_mode_selected.at(CELL_AUDIO_OUT_PRIMARY));
+	ensure(!secondary_modes.empty() && initial_mode_selected.at(CELL_AUDIO_OUT_SECONDARY));
 
 	for (const CellAudioOutSoundMode& mode : primary_modes)
 	{
@@ -169,6 +176,31 @@ audio_out_configuration::audio_out_configuration()
 
 	cellSysutil.notice("cellAudioOut: initial primary output configuration: channels=%d, encoder=%d, downmixer=%d", primary_output.channels, primary_output.encoder, primary_output.downmixer);
 	cellSysutil.notice("cellAudioOut: initial secondary output configuration: channels=%d, encoder=%d, downmixer=%d", secondary_output.channels, secondary_output.encoder, secondary_output.downmixer);
+}
+
+std::pair<AudioChannelCnt, AudioChannelCnt> audio_out_configuration::audio_out::get_channel_count_and_downmixer() const
+{
+	std::pair<AudioChannelCnt, AudioChannelCnt> ret;
+
+	switch (sound_mode.channel)
+	{
+	case 2: ret.first = AudioChannelCnt::STEREO; break;
+	case 6: ret.first = AudioChannelCnt::SURROUND_5_1; break;
+	case 8: ret.first = AudioChannelCnt::SURROUND_7_1; break;
+	default:
+		fmt::throw_exception("Unsupported channel count in cellAudioOut sound_mode: %d", sound_mode.channel);
+	}
+
+	switch (downmixer)
+	{
+	case CELL_AUDIO_OUT_DOWNMIXER_NONE: ret.second = AudioChannelCnt::SURROUND_7_1; break;
+	case CELL_AUDIO_OUT_DOWNMIXER_TYPE_A: ret.second = AudioChannelCnt::STEREO; break;
+	case CELL_AUDIO_OUT_DOWNMIXER_TYPE_B: ret.second = AudioChannelCnt::SURROUND_5_1; break;
+	default:
+		fmt::throw_exception("Unsupported downmixer in cellAudioOut config: %d", downmixer);
+	}
+
+	return ret;
 }
 
 error_code cellAudioOutGetNumberOfDevice(u32 audioOut);
@@ -238,7 +270,6 @@ error_code cellAudioOutGetState(u32 audioOut, u32 deviceIndex, vm::ptr<CellAudio
 		return CELL_AUDIO_OUT_ERROR_ILLEGAL_PARAMETER;
 	}
 
-
 	const auto num = cellAudioOutGetNumberOfDevice(audioOut);
 
 	if (num < 0)
@@ -269,23 +300,14 @@ error_code cellAudioOutGetState(u32 audioOut, u32 deviceIndex, vm::ptr<CellAudio
 	case CELL_AUDIO_OUT_PRIMARY:
 	case CELL_AUDIO_OUT_SECONDARY:
 	{
-		const AudioChannelCnt channels = AudioBackend::get_channel_count(audioOut);
-
 		audio_out_configuration& cfg = g_fxo->get<audio_out_configuration>();
 		std::lock_guard lock(cfg.mtx);
 		const audio_out_configuration::audio_out& out = cfg.out.at(audioOut);
 
-		const auto it = std::find_if(out.sound_modes.cbegin(), out.sound_modes.cend(), [&channels, &out](const CellAudioOutSoundMode& mode)
-		{
-			return mode.type == out.encoder && mode.channel == static_cast<u8>(channels);
-		});
-
-		ensure(it != out.sound_modes.cend());
-
 		_state.state = out.state;
 		_state.encoder = out.encoder;
 		_state.downMixer = out.downmixer;
-		_state.soundMode = *it;
+		_state.soundMode = out.sound_mode;
 		break;
 	}
 	default:
@@ -310,7 +332,7 @@ error_code cellAudioOutConfigure(u32 audioOut, vm::ptr<CellAudioOutConfiguration
 	case CELL_AUDIO_OUT_PRIMARY:
 		break;
 	case CELL_AUDIO_OUT_SECONDARY:
-		return CELL_AUDIO_OUT_ERROR_UNSUPPORTED_AUDIO_OUT; // TODO: enable if we ever actually support peripheral output
+		return CELL_AUDIO_OUT_ERROR_UNSUPPORTED_AUDIO_OUT; // The secondary output only supports one format and can't be reconfigured
 	default:
 		return CELL_AUDIO_OUT_ERROR_ILLEGAL_PARAMETER;
 	}
@@ -323,19 +345,38 @@ error_code cellAudioOutConfigure(u32 audioOut, vm::ptr<CellAudioOutConfiguration
 
 		audio_out_configuration::audio_out& out = cfg.out.at(audioOut);
 
-		if (out.sound_modes.cend() == std::find_if(out.sound_modes.cbegin(), out.sound_modes.cend(), [&config](const CellAudioOutSoundMode& mode)
-			{
-				return mode.channel == config->channel && mode.type == config->encoder && config->downMixer <= CELL_AUDIO_OUT_DOWNMIXER_TYPE_B;
-			}))
-		{
-			return CELL_AUDIO_OUT_ERROR_ILLEGAL_CONFIGURATION; // TODO: confirm
-		}
+		// Apparently the set config does not necessarily have to exist in the list of sound modes.
 
 		if (out.channels != config->channel || out.encoder != config->encoder || out.downmixer != config->downMixer)
 		{
 			out.channels = config->channel;
 			out.encoder = config->encoder;
-			out.downmixer = config->downMixer;
+
+			if (config->downMixer > CELL_AUDIO_OUT_DOWNMIXER_TYPE_B) // PS3 ignores invalid downMixer values and keeps the previous valid one instead
+			{
+				cellSysutil.warning("cellAudioOutConfigure: Invalid downmixing mode configured: %d. Keeping old mode: downMixer=%d",
+					config->downMixer, out.downmixer);
+			}
+			else
+			{
+				out.downmixer = config->downMixer;
+			}
+
+			// Try to find the best sound mode for this configuration
+			const auto it = std::find_if(out.sound_modes.cbegin(), out.sound_modes.cend(), [&out](const CellAudioOutSoundMode& mode)
+				{
+					return mode.type == out.encoder && mode.channel == out.channels;
+				});
+
+			if (it != out.sound_modes.cend())
+			{
+				out.sound_mode = *it;
+			}
+			else
+			{
+				cellSysutil.warning("cellAudioOutConfigure: Could not find an ideal sound mode for %d channel output. Keeping old mode: channels=%d, encoder=%d, fs=%d",
+					config->channel, out.sound_mode.channel, out.sound_mode.type, out.sound_mode.fs);
+			}
 
 			needs_reset = true;
 		}
@@ -351,7 +392,7 @@ error_code cellAudioOutConfigure(u32 audioOut, vm::ptr<CellAudioOutConfiguration
 				cfg.out.at(audioOut).state = CELL_AUDIO_OUT_OUTPUT_STATE_DISABLED;
 			}
 
-			audio::configure_audio();
+			audio::configure_audio(true);
 			audio::configure_rsxaudio();
 
 			{
@@ -389,7 +430,7 @@ error_code cellAudioOutGetConfiguration(u32 audioOut, vm::ptr<CellAudioOutConfig
 	case CELL_AUDIO_OUT_PRIMARY:
 		break;
 	case CELL_AUDIO_OUT_SECONDARY:
-		return CELL_AUDIO_OUT_ERROR_UNSUPPORTED_AUDIO_OUT; // TODO: enable if we ever actually support peripheral output
+		return CELL_AUDIO_OUT_ERROR_UNSUPPORTED_AUDIO_OUT; // The secondary output only supports one format and can't be reconfigured
 	default:
 		return CELL_AUDIO_OUT_ERROR_ILLEGAL_PARAMETER;
 	}
@@ -397,14 +438,16 @@ error_code cellAudioOutGetConfiguration(u32 audioOut, vm::ptr<CellAudioOutConfig
 	audio_out_configuration& cfg = g_fxo->get<audio_out_configuration>();
 	std::lock_guard lock(cfg.mtx);
 
-	CellAudioOutConfiguration _config{};
-
 	const audio_out_configuration::audio_out& out = cfg.out.at(audioOut);
-	_config.channel = out.channels;
-	_config.encoder = out.encoder;
+
+	// Return the active config.
+	CellAudioOutConfiguration _config{};
+	_config.channel   = out.channels;
+	_config.encoder   = out.encoder;
 	_config.downMixer = out.downmixer;
 
 	*config = _config;
+
 	return CELL_OK;
 }
 
@@ -464,7 +507,7 @@ error_code cellAudioOutGetDeviceInfo(u32 audioOut, u32 deviceIndex, vm::ptr<Cell
 	_info.portType = CELL_AUDIO_OUT_PORT_HDMI;
 	_info.availableModeCount = ::narrow<u8>(out.sound_modes.size());
 	_info.state = CELL_AUDIO_OUT_DEVICE_STATE_AVAILABLE;
-	_info.latency = 1000;
+	_info.latency = 13;
 
 	for (usz i = 0; i < out.sound_modes.size(); i++)
 	{
@@ -502,15 +545,15 @@ error_code cellAudioOutSetCopyControl(u32 audioOut, u32 control)
 	return CELL_OK;
 }
 
-error_code cellAudioOutRegisterCallback()
+error_code cellAudioOutRegisterCallback(u32 slot, vm::ptr<CellAudioOutCallback> function, vm::ptr<void> userData)
 {
-	cellSysutil.todo("cellAudioOutRegisterCallback()");
+	cellSysutil.todo("cellAudioOutRegisterCallback(slot=%d, function=*0x%x, userData=*0x%x)", slot, function, userData);
 	return CELL_OK;
 }
 
-error_code cellAudioOutUnregisterCallback()
+error_code cellAudioOutUnregisterCallback(u32 slot)
 {
-	cellSysutil.todo("cellAudioOutUnregisterCallback()");
+	cellSysutil.todo("cellAudioOutUnregisterCallback(slot=%d)", slot);
 	return CELL_OK;
 }
 

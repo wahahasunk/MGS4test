@@ -42,7 +42,7 @@ class main_window : public QMainWindow
 {
 	Q_OBJECT
 
-	Ui::main_window *ui;
+	std::unique_ptr<Ui::main_window> ui;
 
 	bool m_sys_menu_opened = false;
 	bool m_is_list_mode = true;
@@ -101,6 +101,8 @@ public Q_SLOTS:
 	void OnEmuResume() const;
 	void OnEmuPause() const;
 	void OnEmuReady() const;
+	void OnEnableDiscEject(bool enabled) const;
+	void OnEnableDiscInsert(bool enabled) const;
 
 	void RepaintGui();
 	void RetranslateUI(const QStringList& language_codes, const QString& language);

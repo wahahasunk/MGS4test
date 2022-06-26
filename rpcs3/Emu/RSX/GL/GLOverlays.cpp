@@ -334,8 +334,10 @@ namespace gl
 	void ui_overlay_renderer::destroy()
 	{
 		temp_image_cache.clear();
+		temp_view_cache.clear();
 		resources.clear();
 		font_cache.clear();
+		view_cache.clear();
 		overlay_pass::destroy();
 	}
 
@@ -486,7 +488,7 @@ namespace gl
 			}
 			case rsx::overlays::image_resource_id::raw_image:
 			{
-				glBindTexture(GL_TEXTURE_2D, find_temp_image(static_cast<rsx::overlays::image_info*>(cmd.config.external_data_ref), ui.uid)->id());
+				cmd_->bind_texture(31, GL_TEXTURE_2D, find_temp_image(static_cast<rsx::overlays::image_info*>(cmd.config.external_data_ref), ui.uid)->id());
 				break;
 			}
 			case rsx::overlays::image_resource_id::font_file:
@@ -497,7 +499,7 @@ namespace gl
 			}
 			default:
 			{
-				cmd_->bind_texture(30, GL_TEXTURE_2D, view_cache[cmd.config.texture_ref - 1]->id());
+				cmd_->bind_texture(31, GL_TEXTURE_2D, view_cache[cmd.config.texture_ref - 1]->id());
 				break;
 			}
 			}
@@ -575,10 +577,10 @@ namespace gl
 		program_handle.uniforms["stereo_image_count"] = (source[1] == GL_NONE? 1 : 2);
 
 		saved_sampler_state saved(31, m_sampler);
-		glBindTexture(GL_TEXTURE_2D, source[0]);
+		cmd->bind_texture(31, GL_TEXTURE_2D, source[0]);
 
 		saved_sampler_state saved2(30, m_sampler);
-		glBindTexture(GL_TEXTURE_2D, source[1]);
+		cmd->bind_texture(30, GL_TEXTURE_2D, source[1]);
 
 		overlay_pass::run(cmd, viewport, GL_NONE, false, false);
 	}
@@ -608,10 +610,10 @@ namespace gl
 		const u32 src_offset, const coordu& dst_region,
 		const pixel_unpack_settings& settings)
 	{
-		const int row_length = settings.get_row_length();
-		program_handle.uniforms["src_pitch"] = row_length ? row_length : static_cast<int>(dst_region.width);
-		program_handle.uniforms["swap_bytes"] = settings.get_swap_bytes() ? 1 : 0;
-		src->bind_range(GL_COMPUTE_BUFFER_SLOT(0), src_offset, row_length * dst_region.height);
+		const u32 row_length = settings.get_row_length() ? settings.get_row_length() : static_cast<u32>(dst_region.width);
+		program_handle.uniforms["src_pitch"] = row_length;
+		program_handle.uniforms["swap_bytes"] = settings.get_swap_bytes();
+		src->bind_range(gl::buffer::target::ssbo, GL_COMPUTE_BUFFER_SLOT(0), src_offset, row_length * 4 * dst_region.height);
 
 		cmd->stencil_mask(0xFF);
 

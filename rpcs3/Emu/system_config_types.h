@@ -187,12 +187,12 @@ enum class video_aspect
 enum class frame_limit_type
 {
 	none,
-	_59_94,
 	_50,
 	_60,
 	_30,
 	_auto,
 	_ps3,
+	infinite,
 };
 
 enum class msaa_level
@@ -216,6 +216,14 @@ enum class screen_quadrant
 	top_right,
 	bottom_left,
 	bottom_right
+};
+
+enum class rsx_fifo_mode : unsigned
+{
+	fast,
+	atomic,
+	atomic_ordered,
+	as_ps3,
 };
 
 enum class tsx_usage

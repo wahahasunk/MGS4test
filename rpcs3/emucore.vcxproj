@@ -71,6 +71,8 @@
     <ClCompile Include="Emu\Io\KeyboardHandler.cpp" />
     <ClCompile Include="Emu\Io\pad_config.cpp" />
     <ClCompile Include="Emu\Io\pad_config_types.cpp" />
+    <ClCompile Include="Emu\IPC_config.cpp" />
+    <ClCompile Include="Emu\IPC_socket.cpp" />
     <ClCompile Include="Emu\localized_string.cpp" />
     <ClCompile Include="Emu\NP\rpcn_config.cpp" />
     <ClCompile Include="Emu\perf_monitor.cpp" />
@@ -105,6 +107,7 @@
     <ClCompile Include="Emu\NP\np_structs_extra.cpp" />
     <ClCompile Include="Emu\NP\rpcn_client.cpp" />
     <ClCompile Include="Emu\vfs_config.cpp" />
+    <ClCompile Include="Loader\disc.cpp" />
     <ClCompile Include="util\atomic.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -481,6 +484,8 @@
     <ClInclude Include="Emu\Io\Keyboard.h" />
     <ClInclude Include="Emu\Io\pad_config.h" />
     <ClInclude Include="Emu\Io\pad_config_types.h" />
+    <ClInclude Include="Emu\IPC_config.h" />
+    <ClInclude Include="Emu\IPC_socket.h" />
     <ClInclude Include="Emu\localized_string.h" />
     <ClInclude Include="Emu\localized_string_id.h" />
     <ClInclude Include="Emu\NP\generated\np2_structs_generated.h" />
@@ -534,6 +539,7 @@
     <ClInclude Include="Emu\system_config.h" />
     <ClInclude Include="Emu\system_config_types.h" />
     <ClInclude Include="Emu\vfs_config.h" />
+    <ClInclude Include="Loader\disc.h" />
     <ClInclude Include="Loader\mself.hpp" />
     <ClInclude Include="util\atomic.hpp" />
     <ClInclude Include="util\media_utils.h" />
@@ -817,6 +823,8 @@
     <None Include="Emu\RSX\Program\GLSLInterpreter\FragmentInterpreter.glsl" />
     <None Include="Emu\RSX\Program\GLSLInterpreter\VertexInterpreter.glsl" />
     <None Include="Emu\RSX\Program\GLSLSnippets\CopyBufferToD24x8.glsl" />
+    <None Include="Emu\RSX\Program\GLSLSnippets\CopyD24x8ToBuffer.glsl" />
+    <None Include="Emu\RSX\Program\GLSLSnippets\CopyRGBA8ToBuffer.glsl" />
     <None Include="Emu\RSX\Program\GLSLSnippets\GenericVSPassthrough.glsl" />
     <None Include="Emu\RSX\Program\GLSLSnippets\GPUDeswizzle.glsl" />
     <None Include="Emu\RSX\Program\GLSLSnippets\ShuffleBytes.glsl" />

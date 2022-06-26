@@ -222,8 +222,10 @@
     <addaction name="sysStopAct"/>
     <addaction name="sysRebootAct"/>
     <addaction name="separator"/>
+    <addaction name="insertDiscAct"/>
+    <addaction name="ejectDiscAct"/>
+    <addaction name="separator"/>
     <addaction name="sysSendOpenMenuAct"/>
-    <addaction name="sysSendExitAct"/>
    </widget>
    <widget class="QMenu" name="menuConfiguration">
     <property name="title">
@@ -242,6 +244,7 @@
     <addaction name="confGuiAct"/>
     <addaction name="separator"/>
     <addaction name="confRPCNAct"/>
+    <addaction name="confIPCAct"/>
     <addaction name="confAutopauseManagerAct"/>
    </widget>
    <widget class="QMenu" name="menuManage">
@@ -475,14 +478,6 @@
    </property>
    <property name="text">
     <string>Send Open System Menu CMD</string>
-   </property>
-  </action>
-  <action name="sysSendExitAct">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="text">
-    <string>Send Exit CMD</string>
    </property>
   </action>
   <action name="confCPUAct">
@@ -1157,6 +1152,14 @@
     <string>Configure RPCN</string>
    </property>
   </action>
+  <action name="confIPCAct">
+   <property name="text">
+    <string>IPC</string>
+   </property>
+   <property name="toolTip">
+    <string>Configure IPC</string>
+   </property>
+  </action>
   <action name="actionLog_Viewer">
    <property name="text">
     <string>Log Viewer</string>
@@ -1197,6 +1200,22 @@
   <action name="confCamerasAct">
    <property name="text">
     <string>Cameras</string>
+   </property>
+  </action>
+  <action name="ejectDiscAct">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Eject Disc</string>
+   </property>
+  </action>
+  <action name="insertDiscAct">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Insert Disc</string>
    </property>
   </action>
  </widget>

@@ -950,12 +950,12 @@ QString emu_settings::GetLocalizedSetting(const QString& original, emu_settings_
 		switch (static_cast<frame_limit_type>(index))
 		{
 		case frame_limit_type::none: return tr("Off", "Frame limit");
-		case frame_limit_type::_59_94: return tr("59.94", "Frame limit");
 		case frame_limit_type::_50: return tr("50", "Frame limit");
 		case frame_limit_type::_60: return tr("60", "Frame limit");
 		case frame_limit_type::_30: return tr("30", "Frame limit");
 		case frame_limit_type::_auto: return tr("Auto", "Frame limit");
 		case frame_limit_type::_ps3: return tr("PS3 Native", "Frame limit");
+		case frame_limit_type::infinite: return tr("Infinite", "Frame limit");
 		}
 		break;
 	case emu_settings_type::MSAA:
@@ -1095,6 +1095,15 @@ QString emu_settings::GetLocalizedSetting(const QString& original, emu_settings_
 		case sleep_timers_accuracy_level::_as_host: return tr("As Host", "Sleep timers accuracy");
 		case sleep_timers_accuracy_level::_usleep: return tr("Usleep Only", "Sleep timers accuracy");
 		case sleep_timers_accuracy_level::_all_timers: return tr("All Timers", "Sleep timers accuracy");
+		}
+		break;
+	case emu_settings_type::FIFOAccuracy:
+		switch (static_cast<rsx_fifo_mode>(index))
+		{
+		case rsx_fifo_mode::fast: return tr("Fast", "RSX FIFO Accuracy");
+		case rsx_fifo_mode::atomic: return tr("Atomic", "RSX FIFO Accuracy");
+		case rsx_fifo_mode::atomic_ordered: return tr("Ordered & Atomic", "RSX FIFO Accuracy");
+		case rsx_fifo_mode::as_ps3: return tr("PS3", "RSX FIFO Accuracy");
 		}
 		break;
 	case emu_settings_type::PerfOverlayDetailLevel:

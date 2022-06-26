@@ -1030,10 +1030,8 @@ spu_imm_table_t::spu_imm_table_t()
 	}
 }
 
-std::string spu_thread::dump_regs() const
+void spu_thread::dump_regs(std::string& ret) const
 {
-	std::string ret;
-
 	const bool floats_only = debugger_float_mode.load();
 
 	SPUDisAsm dis_asm(cpu_disasm_mode::normal, ls);
@@ -1148,8 +1146,6 @@ std::string spu_thread::dump_regs() const
 		fmt::append(ret, "[0x%02x] %08x %08x %08x %08x\n", i * sizeof(data[0])
 			, data[i + 0], data[i + 1], data[i + 2], data[i + 3]);
 	}
-
-	return ret;
 }
 
 std::string spu_thread::dump_callstack() const
@@ -1221,7 +1217,7 @@ std::vector<std::pair<u32, u32>> spu_thread::dump_callstack_list() const
 
 std::string spu_thread::dump_misc() const
 {
-	std::string ret;
+	std::string ret = cpu_thread::dump_misc();
 
 	fmt::append(ret, "Block Weight: %u (Retreats: %u)", block_counter, block_failure);
 
@@ -1414,6 +1410,9 @@ extern thread_local std::string(*g_tls_log_prefix)();
 
 void spu_thread::cpu_task()
 {
+#ifdef __APPLE__
+	pthread_jit_write_protect_np(true);
+#endif
 	// Get next PC and SPU Interrupt status
 	pc = status_npc.load().npc;
 
@@ -1500,9 +1499,29 @@ void spu_thread::cpu_work()
 
 	const u32 old_iter_count = cpu_work_iteration_count++;
 
-	const auto timeout = +g_cfg.core.mfc_transfers_timeout;
-
 	bool work_left = false;
+
+	if (has_active_local_bps)
+	{
+		if (local_breakpoints[pc / 4])
+		{
+			// Ignore repeatations until a different instruction is issued
+			if (pc != current_bp_pc)
+			{
+				// Breakpoint hit
+				state += cpu_flag::dbg_pause;
+			}
+		}
+
+		current_bp_pc = pc;
+		work_left = true;
+	}
+	else
+	{
+		current_bp_pc = umax;
+	}
+
+	const auto timeout = +g_cfg.core.mfc_transfers_timeout;
 
 	if (u32 shuffle_count = g_cfg.core.mfc_transfers_shuffling)
 	{
@@ -1541,7 +1560,19 @@ void spu_thread::cpu_work()
 
 	if (!work_left)
 	{
-		state -= cpu_flag::pending;
+		// No more pending work
+		state.atomic_op([](bs_t<cpu_flag>& flags)
+		{
+			if (flags & cpu_flag::pending_recheck)
+			{
+				// Do not really remove ::pending because external thread may have pushed more pending work
+				flags -= cpu_flag::pending_recheck;
+			}
+			else
+			{
+				flags -= cpu_flag::pending;
+			}
+		});
 	}
 
 	if (gen_interrupt)
@@ -1692,7 +1723,7 @@ void spu_thread::push_snr(u32 number, u32 value)
 
 	// Prepare some data
 	const u32 event_bit = SPU_EVENT_S1 >> (number & 1);
-	const u32 bitor_bit = (snr_config >> number) & 1;
+	const bool bitor_bit = !!((snr_config >> number) & 1);
 
 	// Redundant, g_use_rtm is checked inside tx_start now.
 	if (g_use_rtm)
@@ -1702,10 +1733,16 @@ void spu_thread::push_snr(u32 number, u32 value)
 
 		const bool ok = utils::tx_start([&]
 		{
-			channel_notify = (channel->data.raw() & spu_channel::bit_wait) != 0;
+			channel_notify = (channel->data.raw() == spu_channel::bit_wait);
 			thread_notify = (channel->data.raw() & spu_channel::bit_count) == 0;
 
-			if (bitor_bit)
+			if (channel_notify)
+			{
+				ensure(channel->jostling_value.raw() == spu_channel::bit_wait);
+				channel->jostling_value.raw() = value;
+				channel->data.raw() = 0;
+			}
+			else if (bitor_bit)
 			{
 				channel->data.raw() &= ~spu_channel::bit_wait;
 				channel->data.raw() |= spu_channel::bit_count | value;
@@ -1749,16 +1786,8 @@ void spu_thread::push_snr(u32 number, u32 value)
 	});
 
 	// Check corresponding SNR register settings
-	if (bitor_bit)
-	{
-		if (channel->push_or(value))
-			set_events(event_bit);
-	}
-	else
-	{
-		if (channel->push(value))
-			set_events(event_bit);
-	}
+	if (channel->push(value, bitor_bit))
+		set_events(event_bit);
 
 	ch_events.atomic_op([](ch_events_t& ev)
 	{
@@ -1874,6 +1903,8 @@ void spu_thread::do_dma_transfer(spu_thread* _this, const spu_mfc_cmd& args, u8*
 	{
 		src = zero_buf;
 	}
+
+	rsx::reservation_lock<false, 1> rsx_lock(eal, args.size, !is_get && g_cfg.core.rsx_fifo_accuracy && !g_cfg.core.spu_accurate_dma);
 
 	if ((!g_use_rtm && !is_get) || g_cfg.core.spu_accurate_dma)  [[unlikely]]
 	{

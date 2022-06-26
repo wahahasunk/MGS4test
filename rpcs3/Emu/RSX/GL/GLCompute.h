@@ -307,7 +307,7 @@ namespace gl
 		void bind_resources() override
 		{
 			src_buffer->bind_range(gl::buffer::target::ssbo, GL_COMPUTE_BUFFER_SLOT(0), in_offset, block_length);
-			dst_buffer->bind_range(gl::buffer::target::ssbo, GL_COMPUTE_BUFFER_SLOT(1), in_offset, block_length);
+			dst_buffer->bind_range(gl::buffer::target::ssbo, GL_COMPUTE_BUFFER_SLOT(1), out_offset, block_length);
 			param_buffer.bind_range(gl::buffer::target::uniform, GL_COMPUTE_BUFFER_SLOT(2), 0, sizeof(params));
 		}
 
@@ -338,6 +338,25 @@ namespace gl
 			const u32 linear_invocations = utils::aligned_div(data_length, num_bytes_per_invocation);
 			compute_task::run(cmd, linear_invocations);
 		}
+	};
+
+	struct pixel_buffer_layout;
+
+	struct cs_image_to_ssbo : compute_task
+	{
+		virtual void run(gl::command_context& cmd, gl::viewable_image* src, const gl::buffer* dst, u32 out_offset, const coordu& region, const gl::pixel_buffer_layout& layout, const gl::pixel_pack_settings& settings) = 0;
+	};
+
+	struct cs_d24x8_to_ssbo : cs_image_to_ssbo
+	{
+		cs_d24x8_to_ssbo();
+		void run(gl::command_context& cmd, gl::viewable_image* src, const gl::buffer* dst, u32 out_offset, const coordu& region, const gl::pixel_buffer_layout& layout, const gl::pixel_pack_settings& settings) override;
+	};
+
+	struct cs_rgba8_to_ssbo : cs_image_to_ssbo
+	{
+		cs_rgba8_to_ssbo();
+		void run(gl::command_context& cmd, gl::viewable_image* src, const gl::buffer* dst, u32 out_offset, const coordu& region, const gl::pixel_buffer_layout& layout, const gl::pixel_pack_settings& settings) override;
 	};
 
 	// TODO: Replace with a proper manager

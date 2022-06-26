@@ -77,6 +77,12 @@ namespace rsx
 {
 	std::function<bool(u32 addr, bool is_writing)> g_access_violation_handler;
 
+	rsx_iomap_table::rsx_iomap_table() noexcept
+		: ea(fill_array(-1))
+		, io(fill_array(-1))
+	{
+	}
+
 	u32 get_address(u32 offset, u32 location, u32 size_to_check, u32 line, u32 col, const char* file, const char* func)
 	{
 		const auto render = get_current_renderer();
@@ -589,6 +595,31 @@ namespace rsx
 		}
 	}
 
+	void thread::post_vblank_event(u64 post_event_time)
+	{
+		vblank_count++;
+
+		if (isHLE)
+		{
+			if (auto ptr = vblank_handler)
+			{
+				intr_thread->cmd_list
+				({
+					{ ppu_cmd::set_args, 1 }, u64{1},
+					{ ppu_cmd::lle_call, ptr },
+					{ ppu_cmd::sleep, 0 }
+				});
+
+				intr_thread->cmd_notify++;
+				intr_thread->cmd_notify.notify_one();
+			}
+		}
+		else
+		{
+			sys_rsx_context_attribute(0x55555555, 0xFED, 1, get_guest_system_time(post_event_time), 0, 0);
+		}
+	}
+
 	void thread::on_task()
 	{
 		g_tls_log_prefix = []
@@ -680,7 +711,6 @@ namespace rsx
 				{
 					{
 						local_vblank_count++;
-						vblank_count++;
 
 						if (local_vblank_count == vblank_rate)
 						{
@@ -695,24 +725,7 @@ namespace rsx
 							vblank_period = 1'000'000 + u64{g_cfg.video.vblank_ntsc.get()} * 1000;
 						}
 	
-						if (isHLE)
-						{
-							if (vblank_handler)
-							{
-								intr_thread->cmd_list
-								({
-									{ ppu_cmd::set_args, 1 }, u64{1},
-									{ ppu_cmd::lle_call, vblank_handler },
-									{ ppu_cmd::sleep, 0 }
-								});
-
-								intr_thread->cmd_notify.notify_one();
-							}
-						}
-						else
-						{
-							sys_rsx_context_attribute(0x55555555, 0xFED, 1, get_guest_system_time(post_event_time), 0, 0);
-						}
+						post_vblank_event(post_event_time);
 					}
 				}
 				else if (wait_sleep)
@@ -2153,7 +2166,7 @@ namespace rsx
 			//Check that the depth stage is not disabled
 			if (!rsx::method_registers.depth_test_enabled())
 			{
-				rsx_log.error("FS exports depth component but depth test is disabled (INVALID_OPERATION)");
+				rsx_log.trace("FS exports depth component but depth test is disabled (INVALID_OPERATION)");
 			}
 		}
 	}
@@ -2177,6 +2190,9 @@ namespace rsx
 	void thread::reset()
 	{
 		rsx::method_registers.reset();
+		m_graphics_state = pipeline_state::all_dirty;
+		m_rtts_dirty = true;
+		m_framebuffer_state_contested = false;
 	}
 
 	void thread::init(u32 ctrlAddress)
@@ -2652,6 +2668,7 @@ namespace rsx
 	{
 		// Make sure GET value is exposed before sync points
 		fifo_ctrl->sync_get();
+		fifo_ctrl->invalidate_cache();
 	}
 
 	std::pair<u32, u32> thread::try_get_pc_of_x_cmds_backwards(u32 count, u32 get) const
@@ -2713,6 +2730,8 @@ namespace rsx
 
 	void thread::recover_fifo(u32 line, u32 col, const char* file, const char* func)
 	{
+		bool kill_itself = g_cfg.core.rsx_fifo_accuracy == rsx_fifo_mode::as_ps3;
+
 		const u64 current_time = rsx::uclock();
 
 		if (recovered_fifo_cmds_history.size() == 20u)
@@ -2724,11 +2743,17 @@ namespace rsx
 			if (current_time - cmd_info.timestamp < 2'000'000u - std::min<u32>(g_cfg.video.driver_wakeup_delay * 700, 1'400'000))
 			{
 				// Probably hopeless
-				fmt::throw_exception("Dead FIFO commands queue state has been detected!\nTry increasing \"Driver Wake-Up Delay\" setting in Advanced settings. Called from %s", src_loc{line, col, file, func});
+				kill_itself = true;
 			}
 
 			// Erase the last command from history, keep the size of the queue the same
 			recovered_fifo_cmds_history.pop();
+		}
+
+		if (kill_itself)
+		{
+			fmt::throw_exception("Dead FIFO commands queue state has been detected!"
+				"\nTry increasing \"Driver Wake-Up Delay\" setting or setting \"RSX FIFO Accuracy\" to \"%s\", both in Advanced settings. Called from %s", std::min<rsx_fifo_mode>(rsx_fifo_mode{static_cast<u32>(g_cfg.core.rsx_fifo_accuracy.get()) + 1}, rsx_fifo_mode::atomic_ordered), src_loc{line, col, file, func});
 		}
 
 		// Error. Should reset the queue
@@ -2821,10 +2846,8 @@ namespace rsx
 
 	void invalid_method(thread*, u32, u32);
 
-	std::string thread::dump_regs() const
+	void thread::dump_regs(std::string& result) const
 	{
-		std::string result;
-
 		if (ctrl)
 		{
 			fmt::append(result, "FIFO: GET=0x%07x, PUT=0x%07x, REF=0x%08x\n", +ctrl->get, +ctrl->put, +ctrl->ref);
@@ -2849,21 +2872,19 @@ namespace rsx
 			case NV4097_ZCULL_SYNC:
 				continue;
 
+			case NV308A_COLOR:
+			{
+				i = NV3089_SET_OBJECT;
+				continue;
+			}
 			default:
 			{
-				if (i >= NV308A_COLOR && i < NV3089_SET_OBJECT)
-				{
-					continue;
-				}
-
 				break;
 			}
 			}
 
 			fmt::append(result, "[%04x] %s\n", i, ensure(rsx::get_pretty_printing_function(i))(i, method_registers.registers[i]));
 		}
-
-		return result;
 	}
 
 	flags32_t thread::read_barrier(u32 memory_address, u32 memory_range, bool unconditional)
@@ -3194,15 +3215,17 @@ namespace rsx
 		}
 
 		double limit = 0.;
-		switch (g_disable_frame_limit ? frame_limit_type::none : g_cfg.video.frame_limit)
+		const auto frame_limit = g_disable_frame_limit ? frame_limit_type::none : g_cfg.video.frame_limit;
+
+		switch (frame_limit)
 		{
 		case frame_limit_type::none: limit = 0.; break;
-		case frame_limit_type::_59_94: limit = 59.94; break;
 		case frame_limit_type::_50: limit = 50.; break;
 		case frame_limit_type::_60: limit = 60.; break;
 		case frame_limit_type::_30: limit = 30.; break;
 		case frame_limit_type::_auto: limit = static_cast<double>(g_cfg.video.vblank_rate); break;
 		case frame_limit_type::_ps3: limit = 0.; break;
+		case frame_limit_type::infinite: limit = 0.; break;
 		default:
 			break;
 		}
@@ -3237,11 +3260,21 @@ namespace rsx
 					performance_counters.idle_time += delay_us;
 				}
 			}
+
+			flip_notification_count = 1;
 		}
-		else if (wait_for_flip_sema)
+		else if (frame_limit == frame_limit_type::_ps3)
 		{
-			const auto& value = vm::_ref<RsxSemaphore>(device_addr + 0x30).val;
-			if (value != flip_sema_wait_val)
+			bool exit = false;
+
+			if (vblank_at_flip == umax)
+			{
+				vblank_at_flip = +vblank_count;
+				flip_notification_count = 1;
+				exit = true;
+			}
+
+			if (requested_vsync && (exit || vblank_at_flip == vblank_count))
 			{
 				// Not yet signaled, handle it later
 				async_flip_requested |= flip_request::emu_requested;
@@ -3249,14 +3282,19 @@ namespace rsx
 				return;
 			}
 
-			wait_for_flip_sema = false;
+			vblank_at_flip = umax;
+		}
+		else
+		{
+			flip_notification_count = 1;
 		}
 
-		int_flip_index++;
+		int_flip_index += flip_notification_count;
 
 		current_display_buffer = buffer;
 		m_queued_flip.emu_flip = true;
 		m_queued_flip.in_progress = true;
+		m_queued_flip.skip_frame |= g_cfg.video.disable_video_output && !g_cfg.video.perf_overlay.perf_overlay_enabled;
 
 		flip(m_queued_flip);
 
@@ -3264,23 +3302,26 @@ namespace rsx
 		flip_status = CELL_GCM_DISPLAY_FLIP_STATUS_DONE;
 		m_queued_flip.in_progress = false;
 
-		if (!isHLE)
+		while (flip_notification_count--)
 		{
-			sys_rsx_context_attribute(0x55555555, 0xFEC, buffer, 0, 0, 0);
-			return;
-		}
+			if (!isHLE)
+			{
+				sys_rsx_context_attribute(0x55555555, 0xFEC, buffer, 0, 0, 0);
+				continue;
+			}
 
-		if (flip_handler)
-		{
-			intr_thread->cmd_list
-			({
-				{ ppu_cmd::set_args, 1 }, u64{ 1 },
-				{ ppu_cmd::lle_call, flip_handler },
-				{ ppu_cmd::sleep, 0 }
-			});
+			if (auto ptr = flip_handler)
+			{
+				intr_thread->cmd_list
+				({
+					{ ppu_cmd::set_args, 1 }, u64{ 1 },
+					{ ppu_cmd::lle_call, ptr },
+					{ ppu_cmd::sleep, 0 }
+				});
 
-			intr_thread->cmd_notify++;
-			intr_thread->cmd_notify.notify_one();
+				intr_thread->cmd_notify++;
+				intr_thread->cmd_notify.notify_one();
+			}
 		}
 	}
 }

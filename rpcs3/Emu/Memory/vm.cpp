@@ -23,11 +23,11 @@ void ppu_remove_hle_instructions(u32 addr, u32 size);
 
 namespace vm
 {
-	static u8* memory_reserve_4GiB(void* _addr, u64 size = 0x100000000)
+	static u8* memory_reserve_4GiB(void* _addr, u64 size = 0x100000000, bool is_memory_mapping = false)
 	{
 		for (u64 addr = reinterpret_cast<u64>(_addr) + 0x100000000; addr < 0x8000'0000'0000; addr += 0x100000000)
 		{
-			if (auto ptr = utils::memory_reserve(size, reinterpret_cast<void*>(addr)))
+			if (auto ptr = utils::memory_reserve(size, reinterpret_cast<void*>(addr), is_memory_mapping))
 			{
 				return static_cast<u8*>(ptr);
 			}
@@ -37,7 +37,7 @@ namespace vm
 	}
 
 	// Emulated virtual memory
-	u8* const g_base_addr = memory_reserve_4GiB(reinterpret_cast<void*>(0x2'0000'0000), 0x2'0000'0000);
+	u8* const g_base_addr = memory_reserve_4GiB(reinterpret_cast<void*>(0x2'0000'0000), 0x2'0000'0000, true);
 
 	// Unprotected virtual memory mirror
 	u8* const g_sudo_addr = g_base_addr + 0x1'0000'0000;
@@ -697,6 +697,21 @@ namespace vm
 		if (~flags & page_readable)
 			prot = utils::protection::no;
 
+		std::string map_error;
+
+		auto map_critical = [&](u8* ptr, utils::protection prot)
+		{
+			auto [res, error] = shm->map_critical(ptr, prot);
+
+			if (res != ptr)
+			{
+				map_error = std::move(error);
+				return false;
+			}
+
+			return true;
+		};
+
 		if (is_noop)
 		{
 		}
@@ -704,9 +719,9 @@ namespace vm
 		{
 			utils::memory_protect(g_base_addr + addr, size, prot);
 		}
-		else if (shm->map_critical(g_base_addr + addr, prot) != g_base_addr + addr || shm->map_critical(g_sudo_addr + addr) != g_sudo_addr + addr || !shm->map_self())
+		else if (!map_critical(g_base_addr + addr, prot) || !map_critical(g_sudo_addr + addr, utils::protection::rw) || (map_error = "map_self()", !shm->map_self()))
 		{
-			fmt::throw_exception("Memory mapping failed - blame Windows (addr=0x%x, size=0x%x, flags=0x%x)", addr, size, flags);
+			fmt::throw_exception("Memory mapping failed (addr=0x%x, size=0x%x, flags=0x%x): %s", addr, size, flags, map_error);
 		}
 
 		if (flags & page_executable && !is_noop)
@@ -964,7 +979,7 @@ namespace vm
 		return block->alloc(size, nullptr, align);
 	}
 
-	u32 falloc(u32 addr, u32 size, memory_location_t location, const std::shared_ptr<utils::shm>* src)
+	bool falloc(u32 addr, u32 size, memory_location_t location, const std::shared_ptr<utils::shm>* src)
 	{
 		const auto block = get(location, addr);
 
@@ -972,7 +987,7 @@ namespace vm
 		{
 			vm_log.error("vm::falloc(): Invalid memory location (%u, addr=0x%x)", +location, addr);
 			ensure(location == any || location < memory_location_max); // The only allowed locations to fail
-			return 0;
+			return false;
 		}
 
 		return block->falloc(addr, size, src);
@@ -1138,10 +1153,28 @@ namespace vm
 	{
 		if (this->flags & preallocated)
 		{
+			std::string map_error;
+
+			auto map_critical = [&](u8* ptr, utils::protection prot)
+			{
+				auto [res, error] = m_common->map_critical(ptr, prot);
+	
+				if (res != ptr)
+				{
+					map_error = std::move(error);
+					return false;
+				}
+	
+				return true;
+			};
+
 			// Special path for whole-allocated areas allowing 4k granularity
 			m_common = std::make_shared<utils::shm>(size);
-			m_common->map_critical(vm::base(addr), this->flags & page_size_4k && utils::c_page_size > 4096 ? utils::protection::rw : utils::protection::no);
-			m_common->map_critical(vm::get_super_ptr(addr));
+
+			if (!map_critical(vm::_ptr<u8>(addr), this->flags & page_size_4k && utils::c_page_size > 4096 ? utils::protection::rw : utils::protection::no) || !map_critical(vm::get_super_ptr(addr), utils::protection::rw))
+			{
+				fmt::throw_exception("Memory mapping failed (addr=0x%x, size=0x%x, flags=0x%x): %s", addr, size, flags, map_error);
+			}
 		}
 	}
 
@@ -1221,7 +1254,7 @@ namespace vm
 
 		u32 addr = utils::align(this->addr, align);
 
-		if (this->addr > std::min(max, addr))
+		if (this->addr > max || addr > max)
 		{
 			return 0;
 		}
@@ -1251,7 +1284,7 @@ namespace vm
 		return 0;
 	}
 
-	u32 block_t::falloc(u32 addr, const u32 orig_size, const std::shared_ptr<utils::shm>* src, u64 flags)
+	bool block_t::falloc(u32 addr, const u32 orig_size, const std::shared_ptr<utils::shm>* src, u64 flags)
 	{
 		if (!src)
 		{
@@ -1278,7 +1311,7 @@ namespace vm
 			(src && (orig_size | addr) % min_page_size) ||
 			flags & stack_guarded)
 		{
-			return 0;
+			return false;
 		}
 
 		// Force aligned address
@@ -1301,15 +1334,15 @@ namespace vm
 		if (!is_valid())
 		{
 			// Expired block
-			return 0;
+			return false;
 		}
 
 		if (!try_alloc(addr, flags, size, std::move(shm)))
 		{
-			return 0;
+			return false;
 		}
 
-		return addr;
+		return true;
 	}
 
 	u32 block_t::dealloc(u32 addr, const std::shared_ptr<utils::shm>* src) const
@@ -1737,7 +1770,6 @@ namespace vm
 			g_locations.clear();
 		}
 
-		utils::memory_decommit(g_base_addr, 0x200000000);
 		utils::memory_decommit(g_exec_addr, 0x200000000);
 		utils::memory_decommit(g_stat_addr, 0x100000000);
 

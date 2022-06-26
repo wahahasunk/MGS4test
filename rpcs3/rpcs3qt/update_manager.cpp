@@ -7,6 +7,7 @@
 #include "Utilities/File.h"
 #include "Emu/System.h"
 #include "Emu/system_utils.hpp"
+#include "Crypto/utils.h"
 #include "util/logs.hpp"
 
 #include <QApplication>
@@ -221,12 +222,6 @@ bool update_manager::handle_json(bool automatic, bool check_only, bool auto_acce
 
 	update_log.notice("Update found: %s", m_request_url);
 
-	if (check_only)
-	{
-		m_downloader->close_progress_dialog();
-		return true;
-	}
-
 	if (!auto_accept)
 	{
 		const auto& changelog = json_data["changelog"];
@@ -275,6 +270,12 @@ bool update_manager::handle_json(bool automatic, bool check_only, bool auto_acce
 		{
 			update_log.notice("JSON does not contain a changelog section.");
 		}
+	}
+
+	if (check_only)
+	{
+		m_downloader->close_progress_dialog();
+		return true;
 	}
 
 	update(auto_accept);
@@ -372,7 +373,7 @@ bool update_manager::handle_rpcs3(const QByteArray& data, bool auto_accept)
 		return false;
 	}
 
-	if (const std::string res_hash_string = downloader::get_hash(data.data(), data.size(), false);
+	if (const std::string res_hash_string = sha256_get_hash(data.data(), data.size(), false);
 		m_expected_hash != res_hash_string)
 	{
 		update_log.error("Hash mismatch: %s expected: %s", res_hash_string, m_expected_hash);

@@ -188,6 +188,23 @@ void fmt_class_string<tsx_usage>::format(std::string& out, u64 arg)
 }
 
 template <>
+void fmt_class_string<rsx_fifo_mode>::format(std::string& out, u64 arg)
+{
+	format_enum(out, arg, [](rsx_fifo_mode value)
+	{
+		switch (value)
+		{
+		case rsx_fifo_mode::fast: return "Fast";
+		case rsx_fifo_mode::atomic: return "Atomic";
+		case rsx_fifo_mode::atomic_ordered: return "Ordered & Atomic";
+		case rsx_fifo_mode::as_ps3: return "PS3";
+		}
+
+		return unknown;
+	});
+}
+
+template <>
 void fmt_class_string<sleep_timers_accuracy_level>::format(std::string& out, u64 arg)
 {
 	format_enum(out, arg, [](sleep_timers_accuracy_level value)
@@ -290,12 +307,12 @@ void fmt_class_string<frame_limit_type>::format(std::string& out, u64 arg)
 		switch (value)
 		{
 		case frame_limit_type::none: return "Off";
-		case frame_limit_type::_59_94: return "59.94";
 		case frame_limit_type::_50: return "50";
 		case frame_limit_type::_60: return "60";
 		case frame_limit_type::_30: return "30";
 		case frame_limit_type::_auto: return "Auto";
 		case frame_limit_type::_ps3: return "PS3 Native";
+		case frame_limit_type::infinite: return "Infinite";
 		}
 
 		return unknown;
